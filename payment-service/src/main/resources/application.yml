@@ -1,0 +1,101 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: shop_user
+    password: shop_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+    consumer:
+      group-id: payment-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+      order-service:
+        connectTimeout: 3000
+        readTimeout: 3000
+
+# Circuit Breaker 설정
+resilience4j:
+  circuitbreaker:
+    instances:
+      external-payment-api:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 5s
+  retry:
+    instances:
+      external-payment-api:
+        max-attempts: 3
+        wait-duration: 1s
+        exponential-backoff-multiplier: 2
+  timelimiter:
+    instances:
+      external-payment-api:
+        timeout-duration: 10s
+
+# 외부 결제 API 설정
+payment:
+  external:
+    api:
+      url: https://api.payment-gateway.com
+      timeout: 10000
+      retry-count: 3
+  pg:
+    company: "KakaoPay"
+    merchant-id: "test_merchant"
+    secret-key: "test_secret_key"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.jun.paymentservice: DEBUG
+    io.github.resilience4j: DEBUG

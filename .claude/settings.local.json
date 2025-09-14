@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(del C:projectdistributed-shopproduct-servicesrcmainresourcesapplication.properties)",
+      "Bash(copy k6-v0.47.0-windows-amd64k6.exe k6-load-test)",
+      "Bash(cp:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

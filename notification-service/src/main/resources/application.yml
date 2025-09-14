@@ -1,0 +1,93 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/notification_db
+    username: shop_user
+    password: shop_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-service-group-v2
+      auto-offset-reset: latest
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.type.mapping: "*:java.util.Map"
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: java.util.Map
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+# WebSocket 설정
+websocket:
+  endpoint: /ws
+  topic:
+    flash-sale: /topic/flash-sale
+    user-notification: /topic/user-notification
+    order-status: /topic/order-status
+
+# 카프카 토픽 설정
+kafka:
+  topics:
+    order-events: order-events
+    payment-events: payment-events
+    flash-sale-events: flash-sale-events
+    user-notifications: user-notifications
+
+# 이메일 설정 (개발용)
+mail:
+  smtp:
+    host: smtp.gmail.com
+    port: 587
+    username: your-email@gmail.com
+    password: your-app-password
+    auth: true
+    starttls:
+      enable: true
+
+# 푸시 알림 설정
+push:
+  fcm:
+    server-key: your-fcm-server-key
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.jun.notificationservice: DEBUG
+    org.springframework.kafka: DEBUG
+    org.springframework.messaging: DEBUG
