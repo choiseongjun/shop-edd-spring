@@ -44,6 +44,13 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
 
+services:
+  gateway-url: http://localhost:8080
+  product-service:
+    base-url: /api/products
+  payment-service:
+    base-url: /api/payments
+
 eureka:
   client:
     service-url:
