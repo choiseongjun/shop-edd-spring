@@ -44,7 +44,7 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
         spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-        spring.json.type.mapping: "com.jun.productservice.event.StockReservedEvent:com.jun.orderservice.event.StockReservedEvent"
+        spring.json.type.mapping: "com.jun.productservice.event.StockReservedEvent:com.jun.orderservice.event.StockReservedEvent,com.jun.paymentservice.event.PaymentCompletedEvent:com.jun.orderservice.event.PaymentCompletedEvent"
 
 services:
   gateway-url: http://localhost:8080

@@ -3,6 +3,7 @@ package com.jun.orderservice.saga;
 import com.jun.orderservice.event.OrderCreatedEvent;
 import com.jun.orderservice.event.OrderCancelledEvent;
 import com.jun.orderservice.event.StockReservedEvent;
+import com.jun.orderservice.event.PaymentCompletedEvent;
 import com.jun.orderservice.service.OrderEventPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -54,8 +55,8 @@ public class OrderSagaOrchestrator {
     }
 
     @KafkaListener(topics = "payment-completed", groupId = "order-saga-group")
-    public void handlePaymentCompleted(Map<String, Object> paymentData) {
-        String orderId = (String) paymentData.get("orderId");
+    public void handlePaymentCompleted(PaymentCompletedEvent paymentEvent) {
+        String orderId = paymentEvent.getOrderId();
         SagaState sagaState = sagaStates.get(orderId);
 
         if (sagaState != null) {

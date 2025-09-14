@@ -42,13 +42,34 @@ public class OrderController {
     }
 
     @GetMapping("/{orderId}")
-    public ResponseEntity<OrderDto> getOrder(@PathVariable String orderId,
-                                           @RequestHeader("User-Id") Long userId) {
-        OrderDto order = orderService.getOrderByOrderId(orderId, userId);
-        if (order != null) {
-            return ResponseEntity.ok(order);
+    public ResponseEntity<?> getOrder(@PathVariable String orderId,
+                                     @RequestHeader(value = "User-Id", required = false) String userIdHeader) {
+        try {
+            if (userIdHeader == null || userIdHeader.trim().isEmpty()) {
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "User-Id header is required");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+
+            Long userId;
+            try {
+                userId = Long.parseLong(userIdHeader.trim());
+            } catch (NumberFormatException e) {
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "Invalid User-Id format");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+
+            OrderDto order = orderService.getOrderByOrderId(orderId, userId);
+            if (order != null) {
+                return ResponseEntity.ok(order);
+            }
+            return ResponseEntity.notFound().build();
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
         }
-        return ResponseEntity.notFound().build();
     }
 
     @PutMapping("/{orderId}/status")

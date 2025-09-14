@@ -9,6 +9,7 @@ import com.jun.paymentservice.dto.PaymentRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.util.Map;
 
@@ -21,6 +22,9 @@ public class StockEventListener {
     @Autowired
     private PaymentEventPublisher eventPublisher;
 
+    @Autowired
+    private RestTemplate restTemplate;
+
     @KafkaListener(topics = "stock-reserved", groupId = "payment-service-group")
     public void handleStockReserved(StockReservedEvent stockReservedEvent) {
         try {
@@ -32,36 +36,12 @@ public class StockEventListener {
             PaymentRequest paymentRequest = createPaymentRequest(orderId);
             if (paymentRequest != null) {
                 try {
-                    var result = paymentService.processPaymentWithGateway(paymentRequest).join();
-
-                    if (result.startsWith("PAYMENT_SUCCESS")) {
-                        eventPublisher.publishPaymentCompleted(new PaymentCompletedEvent(
-                            java.util.UUID.randomUUID().toString(),
-                            orderId,
-                            paymentRequest.getUserId(),
-                            paymentRequest.getAmount(),
-                            paymentRequest.getPaymentMethod(),
-                            result
-                        ));
-                    } else {
-                        eventPublisher.publishPaymentFailed(new PaymentFailedEvent(
-                            java.util.UUID.randomUUID().toString(),
-                            orderId,
-                            paymentRequest.getUserId(),
-                            paymentRequest.getAmount(),
-                            paymentRequest.getPaymentMethod(),
-                            "Payment gateway error"
-                        ));
-                    }
+                    // 실제 결제 처리 - 이 메서드가 DB에 결제 정보를 저장하고 이벤트도 발행합니다
+                    paymentService.processPayment(paymentRequest, paymentRequest.getUserId());
+                    System.out.println("Payment processed successfully for order: " + orderId);
                 } catch (Exception e) {
-                    eventPublisher.publishPaymentFailed(new PaymentFailedEvent(
-                        java.util.UUID.randomUUID().toString(),
-                        orderId,
-                        paymentRequest.getUserId(),
-                        paymentRequest.getAmount(),
-                        paymentRequest.getPaymentMethod(),
-                        e.getMessage()
-                    ));
+                    System.err.println("Failed to process payment for order: " + orderId + ", error: " + e.getMessage());
+                    // 실패 이벤트는 processPayment 내에서 처리됩니다
                 }
             }
         } catch (Exception e) {
@@ -93,8 +73,7 @@ public class StockEventListener {
             // 게이트웨이를 통해 주문 정보 조회
             String orderUrl = "http://localhost:8080/api/orders/" + orderId;
             @SuppressWarnings("unchecked")
-            Map<String, Object> orderResponse = new org.springframework.web.client.RestTemplate()
-                .getForObject(orderUrl, Map.class);
+            Map<String, Object> orderResponse = restTemplate.getForObject(orderUrl, Map.class);
 
             if (orderResponse != null) {
                 PaymentRequest request = new PaymentRequest();
