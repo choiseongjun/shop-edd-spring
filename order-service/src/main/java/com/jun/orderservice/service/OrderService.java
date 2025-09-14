@@ -9,6 +9,9 @@ import com.jun.orderservice.event.OrderCreatedEvent;
 import com.jun.orderservice.repository.OrderRepository;
 import com.jun.orderservice.service.external.ProductServiceClient;
 import com.jun.orderservice.service.validator.OrderValidator;
+import io.micrometer.observation.annotation.Observed;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
@@ -35,35 +38,100 @@ public class OrderService {
     private final OrderEventPublisher eventPublisher;
     private final ServiceUrlConfig serviceUrlConfig;
     private final OrderValidator orderValidator;
+    private final Tracer tracer;
 
     public OrderService(OrderRepository orderRepository,
                        RedissonClient redissonClient,
                        ProductServiceClient productServiceClient,
                        OrderEventPublisher eventPublisher,
                        ServiceUrlConfig serviceUrlConfig,
-                       OrderValidator orderValidator) {
+                       OrderValidator orderValidator,
+                       Tracer tracer) {
         this.orderRepository = orderRepository;
         this.redissonClient = redissonClient;
         this.productServiceClient = productServiceClient;
         this.eventPublisher = eventPublisher;
         this.serviceUrlConfig = serviceUrlConfig;
         this.orderValidator = orderValidator;
+        this.tracer = tracer;
     }
 
     @Transactional
+    @Observed(name = "order.create", contextualName = "order-creation")
     public OrderDto createOrder(OrderRequest orderRequest, Long userId) {
-        logger.info("Creating order for user: {}", userId);
+        Span orderCreationSpan = tracer.nextSpan()
+                .name("order.create")
+                .tag("user.id", String.valueOf(userId))
+                .tag("order.items.count", String.valueOf(orderRequest.getOrderItems().size()))
+                .tag("order.flash.sale", String.valueOf(orderRequest.getFlashSaleOrder()))
+                .start();
 
-        orderValidator.validateOrderRequest(orderRequest, userId);
+        try (Tracer.SpanInScope ws = tracer.withSpan(orderCreationSpan)) {
+            logger.info("Creating order for user: {}", userId);
 
-        final Order order = buildOrder(orderRequest, userId);
-        final List<OrderCreatedEvent.OrderItemInfo> orderItemInfos = processOrderItems(order, orderRequest);
+            // 주문 검증
+            Span validationSpan = tracer.nextSpan()
+                    .name("order.validation")
+                    .tag("user.id", String.valueOf(userId))
+                    .start();
+            try (Tracer.SpanInScope validationScope = tracer.withSpan(validationSpan)) {
+                orderValidator.validateOrderRequest(orderRequest, userId);
+            } finally {
+                validationSpan.end();
+            }
 
-        final Order savedOrder = orderRepository.save(order);
-        publishOrderCreatedEvent(savedOrder, userId, orderItemInfos);
+            // 주문 빌드
+            final Order order = buildOrder(orderRequest, userId);
 
-        logger.info("Successfully created order: {} for user: {}", savedOrder.getOrderId(), userId);
-        return new OrderDto(savedOrder);
+            // 주문 아이템 처리 (상품 정보 조회 포함)
+            Span itemProcessingSpan = tracer.nextSpan()
+                    .name("order.items.processing")
+                    .tag("items.count", String.valueOf(orderRequest.getOrderItems().size()))
+                    .start();
+            final List<OrderCreatedEvent.OrderItemInfo> orderItemInfos;
+            try (Tracer.SpanInScope itemScope = tracer.withSpan(itemProcessingSpan)) {
+                orderItemInfos = processOrderItems(order, orderRequest);
+            } finally {
+                itemProcessingSpan.tag("order.total.amount", order.getTotalAmount().toString());
+                itemProcessingSpan.end();
+            }
+
+            // 주문 저장
+            Span saveSpan = tracer.nextSpan()
+                    .name("order.save")
+                    .tag("order.id", order.getOrderId())
+                    .start();
+            final Order savedOrder;
+            try (Tracer.SpanInScope saveScope = tracer.withSpan(saveSpan)) {
+                savedOrder = orderRepository.save(order);
+            } finally {
+                saveSpan.end();
+            }
+
+            // 이벤트 발행
+            Span eventSpan = tracer.nextSpan()
+                    .name("order.event.publish")
+                    .tag("order.id", savedOrder.getOrderId())
+                    .tag("event.type", "OrderCreated")
+                    .start();
+            try (Tracer.SpanInScope eventScope = tracer.withSpan(eventSpan)) {
+                publishOrderCreatedEvent(savedOrder, userId, orderItemInfos);
+            } finally {
+                eventSpan.end();
+            }
+
+            orderCreationSpan.tag("order.id", savedOrder.getOrderId());
+            orderCreationSpan.tag("order.status", savedOrder.getStatus().toString());
+            logger.info("Successfully created order: {} for user: {}", savedOrder.getOrderId(), userId);
+            return new OrderDto(savedOrder);
+
+        } catch (Exception e) {
+            orderCreationSpan.tag("error", e.getMessage());
+            logger.error("Failed to create order for user: {}", userId, e);
+            throw e;
+        } finally {
+            orderCreationSpan.end();
+        }
     }
 
     private Order buildOrder(OrderRequest orderRequest, Long userId) {

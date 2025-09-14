@@ -78,14 +78,59 @@ public class ProductService {
     @Transactional
     @CacheEvict(value = {"products", "flash_sale_products"}, allEntries = true)
     public ProductDto updateProduct(Long id, ProductDto productDto) {
-        Optional<Product> existingProduct = productRepository.findById(id);
-        if (existingProduct.isPresent()) {
-            Product product = existingProduct.get();
-            updateProductFields(product, productDto);
-            Product savedProduct = productRepository.save(product);
-            return convertToDto(savedProduct);
+        return productRepository.findById(id)
+                .map(product -> {
+                    updateProductFields(product, productDto);
+                    Product savedProduct = productRepository.save(product);
+                    return convertToDto(savedProduct);
+                })
+                .orElse(null);
+    }
+
+    private void updateProductFields(Product product, ProductDto productDto) {
+        if (productDto.getName() != null) {
+            product.setName(productDto.getName());
         }
-        return null;
+        if (productDto.getDescription() != null) {
+            product.setDescription(productDto.getDescription());
+        }
+        if (productDto.getPrice() != null) {
+            product.updatePrice(productDto.getPrice());
+        }
+        if (productDto.getOriginalPrice() != null) {
+            product.setOriginalPrice(productDto.getOriginalPrice());
+        }
+        if (productDto.getStock() != null) {
+            product.updateStock(productDto.getStock());
+        }
+        if (productDto.getCategoryId() != null) {
+            product.setCategoryId(productDto.getCategoryId());
+        }
+        if (productDto.getImageUrl() != null) {
+            product.setImageUrl(productDto.getImageUrl());
+        }
+        if (productDto.getActive() != null) {
+            if (productDto.getActive()) {
+                product.activate();
+            } else {
+                product.deactivate();
+            }
+        }
+        if (productDto.getFlashSale() != null) {
+            product.setFlashSale(productDto.getFlashSale());
+        }
+        if (productDto.getFlashSaleStartTime() != null) {
+            product.setFlashSaleStartTime(productDto.getFlashSaleStartTime());
+        }
+        if (productDto.getFlashSaleEndTime() != null) {
+            product.setFlashSaleEndTime(productDto.getFlashSaleEndTime());
+        }
+        if (productDto.getFlashSaleStock() != null) {
+            product.setFlashSaleStock(productDto.getFlashSaleStock());
+        }
+        if (productDto.getDiscountRate() != null) {
+            product.setDiscountRate(productDto.getDiscountRate());
+        }
     }
     
     @Transactional
@@ -111,28 +156,25 @@ public class ProductService {
                 return false;
             }
             
-            // 재고 확인
-            if (product.getAvailableStock() < request.getQuantity()) {
+            if (!product.hasAvailableStock(request.getQuantity())) {
                 return false;
             }
-            
-            // 재고 예약
-            int updated = productRepository.reserveStock(request.getProductId(), request.getQuantity());
-            
-            if (updated > 0) {
-                // Redis에 예약 정보 저장 (TTL 10분)
+
+            try {
+                product.reserveStock(request.getQuantity());
+                productRepository.save(product);
+
                 String reservationKey = "reservation:" + request.getOrderId();
                 redisTemplate.opsForHash().put(reservationKey, "productId", request.getProductId());
                 redisTemplate.opsForHash().put(reservationKey, "quantity", request.getQuantity());
                 redisTemplate.opsForHash().put(reservationKey, "userId", request.getUserId());
                 redisTemplate.expire(reservationKey, 10, TimeUnit.MINUTES);
-                
-                // 캐시 무효화
+
                 evictProductCache(request.getProductId());
                 return true;
+            } catch (IllegalArgumentException e) {
+                return false;
             }
-            
-            return false;
         } finally {
             redisTemplate.delete(lockKey);
         }
@@ -149,13 +191,20 @@ public class ProductService {
             return false;
         }
         
-        int updated = productRepository.confirmStockReduction(productId, quantity);
-        if (updated > 0) {
-            redisTemplate.delete(reservationKey);
-            evictProductCache(productId);
-            return true;
+        Optional<Product> productOpt = productRepository.findById(productId);
+        if (productOpt.isPresent()) {
+            Product product = productOpt.get();
+            try {
+                product.confirmStockReduction(quantity);
+                productRepository.save(product);
+                redisTemplate.delete(reservationKey);
+                evictProductCache(productId);
+                return true;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
         }
-        
+
         return false;
     }
     
@@ -170,11 +219,18 @@ public class ProductService {
             return false;
         }
 
-        int updated = productRepository.releaseReservedStock(productId, quantity);
-        if (updated > 0) {
-            redisTemplate.delete(reservationKey);
-            evictProductCache(productId);
-            return true;
+        Optional<Product> productOpt = productRepository.findById(productId);
+        if (productOpt.isPresent()) {
+            Product product = productOpt.get();
+            try {
+                product.releaseReservedStock(quantity);
+                productRepository.save(product);
+                redisTemplate.delete(reservationKey);
+                evictProductCache(productId);
+                return true;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
         }
 
         return false;
@@ -202,13 +258,14 @@ public class ProductService {
                 return false;
             }
 
-            if (product.getAvailableStock() < quantity) {
+            if (!product.hasAvailableStock(quantity)) {
                 return false;
             }
 
-            int updated = productRepository.reserveStock(productId, quantity);
+            try {
+                product.reserveStock(quantity);
+                productRepository.save(product);
 
-            if (updated > 0) {
                 String reservationKey = "reservation:" + orderId;
                 redisTemplate.opsForHash().put(reservationKey, "productId", productId);
                 redisTemplate.opsForHash().put(reservationKey, "quantity", quantity);
@@ -216,9 +273,9 @@ public class ProductService {
 
                 evictProductCache(productId);
                 return true;
+            } catch (IllegalArgumentException e) {
+                return false;
             }
-
-            return false;
         } finally {
             redisTemplate.delete(lockKey);
         }
@@ -233,11 +290,18 @@ public class ProductService {
         if (reservedProductId != null && reservedProductId.equals(productId) &&
             reservedQuantity != null && reservedQuantity.equals(quantity)) {
 
-            int updated = productRepository.releaseReservedStock(productId, quantity);
-            if (updated > 0) {
-                redisTemplate.delete(reservationKey);
-                evictProductCache(productId);
-                return true;
+            Optional<Product> productOpt = productRepository.findById(productId);
+            if (productOpt.isPresent()) {
+                Product product = productOpt.get();
+                try {
+                    product.releaseReservedStock(quantity);
+                    productRepository.save(product);
+                    redisTemplate.delete(reservationKey);
+                    evictProductCache(productId);
+                    return true;
+                } catch (IllegalArgumentException e) {
+                    return false;
+                }
             }
         }
 
@@ -273,24 +337,20 @@ public class ProductService {
     }
     
     private Product convertToEntity(ProductDto dto) {
-        Product product = new Product();
-        updateProductFields(product, dto);
-        return product;
-    }
-    
-    private void updateProductFields(Product product, ProductDto dto) {
-        product.setName(dto.getName());
-        product.setDescription(dto.getDescription());
-        product.setPrice(dto.getPrice());
-        product.setOriginalPrice(dto.getOriginalPrice());
-        product.setStock(dto.getStock());
-        product.setCategoryId(dto.getCategoryId());
-        product.setImageUrl(dto.getImageUrl());
-        product.setActive(dto.getActive() != null ? dto.getActive() : true);
-        product.setFlashSale(dto.getFlashSale() != null ? dto.getFlashSale() : false);
-        product.setFlashSaleStartTime(dto.getFlashSaleStartTime());
-        product.setFlashSaleEndTime(dto.getFlashSaleEndTime());
-        product.setFlashSaleStock(dto.getFlashSaleStock());
-        product.setDiscountRate(dto.getDiscountRate() != null ? dto.getDiscountRate() : 0);
+        return Product.builder()
+                .name(dto.getName())
+                .description(dto.getDescription())
+                .price(dto.getPrice())
+                .originalPrice(dto.getOriginalPrice())
+                .stock(dto.getStock())
+                .categoryId(dto.getCategoryId())
+                .imageUrl(dto.getImageUrl())
+                .active(dto.getActive() != null ? dto.getActive() : true)
+                .flashSale(dto.getFlashSale() != null ? dto.getFlashSale() : false)
+                .flashSaleStartTime(dto.getFlashSaleStartTime())
+                .flashSaleEndTime(dto.getFlashSaleEndTime())
+                .flashSaleStock(dto.getFlashSaleStock())
+                .discountRate(dto.getDiscountRate() != null ? dto.getDiscountRate() : 0)
+                .build();
     }
 }

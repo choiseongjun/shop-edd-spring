@@ -264,7 +264,23 @@ public class Product {
         return getAvailableStock() >= requiredQuantity;
     }
 
-    // Getters only (immutable after creation, except for business methods)
+    // Public setters for service layer access
+    public void setName(String name) { this.name = name; }
+    public void setDescription(String description) { this.description = description; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+    public void setOriginalPrice(BigDecimal originalPrice) { this.originalPrice = originalPrice; }
+    public void setStock(Integer stock) { this.stock = stock; }
+    public void setReservedStock(Integer reservedStock) { this.reservedStock = reservedStock; }
+    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public void setActive(Boolean active) { this.active = active; }
+    public void setFlashSale(Boolean flashSale) { this.flashSale = flashSale; }
+    public void setFlashSaleStartTime(LocalDateTime flashSaleStartTime) { this.flashSaleStartTime = flashSaleStartTime; }
+    public void setFlashSaleEndTime(LocalDateTime flashSaleEndTime) { this.flashSaleEndTime = flashSaleEndTime; }
+    public void setFlashSaleStock(Integer flashSaleStock) { this.flashSaleStock = flashSaleStock; }
+    public void setDiscountRate(Integer discountRate) { this.discountRate = discountRate; }
+
+    // Public getters (immutable after creation, except for business methods)
     public Long getId() { return id; }
     public String getName() { return name; }
     public String getDescription() { return description; }

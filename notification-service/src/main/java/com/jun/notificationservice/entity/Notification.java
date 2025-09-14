@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "notifications")
+@org.hibernate.annotations.Check(constraints = "type IN ('ORDER_CREATED', 'ORDER_PLACED', 'ORDER_CONFIRMED', 'ORDER_SHIPPED', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'PAYMENT_COMPLETED', 'PAYMENT_FAILED', 'PAYMENT_REFUNDED', 'STOCK_SHORTAGE', 'FLASH_SALE_STARTED', 'FLASH_SALE_REMINDER', 'FLASH_SALE_ENDED', 'SYSTEM_MAINTENANCE', 'ACCOUNT_SECURITY', 'PROMOTIONAL')")
 public class Notification {
 
     @Id

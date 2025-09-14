@@ -2,6 +2,7 @@ package com.jun.orderservice.saga;
 
 import com.jun.orderservice.event.OrderCreatedEvent;
 import com.jun.orderservice.event.OrderCancelledEvent;
+import com.jun.orderservice.event.StockReservedEvent;
 import com.jun.orderservice.service.OrderEventPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -36,8 +37,8 @@ public class OrderSagaOrchestrator {
     }
 
     @KafkaListener(topics = "stock-reserved", groupId = "order-saga-group")
-    public void handleStockReserved(Map<String, Object> stockData) {
-        String orderId = (String) stockData.get("orderId");
+    public void handleStockReserved(StockReservedEvent stockReservedEvent) {
+        String orderId = stockReservedEvent.getOrderId();
         SagaState sagaState = sagaStates.get(orderId);
 
         if (sagaState != null) {
@@ -46,6 +47,9 @@ public class OrderSagaOrchestrator {
                 // 재고 해제를 위한 보상 액션
                 releaseStock(orderId);
             });
+            System.out.println("Stock reserved for order: " + orderId +
+                ", productId: " + stockReservedEvent.getProductId() +
+                ", quantity: " + stockReservedEvent.getQuantity());
         }
     }
 

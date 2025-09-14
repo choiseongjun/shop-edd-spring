@@ -2,6 +2,7 @@ package com.jun.paymentservice.listener;
 
 import com.jun.paymentservice.event.PaymentCompletedEvent;
 import com.jun.paymentservice.event.PaymentFailedEvent;
+import com.jun.paymentservice.event.StockReservedEvent;
 import com.jun.paymentservice.service.PaymentEventPublisher;
 import com.jun.paymentservice.service.PaymentService;
 import com.jun.paymentservice.dto.PaymentRequest;
@@ -21,9 +22,12 @@ public class StockEventListener {
     private PaymentEventPublisher eventPublisher;
 
     @KafkaListener(topics = "stock-reserved", groupId = "payment-service-group")
-    public void handleStockReserved(Map<String, Object> stockData) {
+    public void handleStockReserved(StockReservedEvent stockReservedEvent) {
         try {
-            String orderId = (String) stockData.get("orderId");
+            String orderId = stockReservedEvent.getOrderId();
+            System.out.println("Received stock reserved event for order: " + orderId +
+                ", productId: " + stockReservedEvent.getProductId() +
+                ", quantity: " + stockReservedEvent.getQuantity());
 
             PaymentRequest paymentRequest = createPaymentRequest(orderId);
             if (paymentRequest != null) {

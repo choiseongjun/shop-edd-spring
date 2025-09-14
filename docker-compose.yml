@@ -86,6 +86,18 @@ services:
       - shop-network
     restart: unless-stopped
 
+  # Zipkin for distributed tracing
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin-server
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem
+    networks:
+      - shop-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
